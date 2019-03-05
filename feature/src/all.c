@@ -23,6 +23,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "common/frame.h"
 #include "common/alloc.h"
 #include "common/file_io.h"
 #include "common/convolution.h"
@@ -326,6 +327,117 @@ fail_or_end:
 
     aligned_free(blur_buf);
     aligned_free(temp_buf);
+
+    return ret;
+}
+
+int all_frame(
+    float      * ref_frame,
+    float      * dis_frame,
+    void       * frame_scores,
+    int          frm_idx,
+    int          w,
+    int          h,
+    const char * fmt,
+    bool         print_all)
+{
+    struct vmaf_frame_score
+        *fscores     = frame_scores;
+    double 
+        *score       = &fscores->score,
+        *scores      = fscores->mscores,
+        *score_num   = &fscores->score_num,
+        *score_den   = &fscores->score_den,
+        *score_psnr  = &fscores->score_psnr,
+        *score_vif   = &fscores->score_vif,
+        *score_ansnr = &fscores->score_ansnr,
+        *score_adm   = &fscores->score_adm,
+        peak,
+        psnr_max;
+    int
+        stride = ALIGN_CEIL(w * sizeof(float)),
+        ret    = 1;
+
+    ret = psnr_constants(fmt, &peak, &psnr_max);
+    if (ret)
+    {
+        printf("error: unknown format %s.\n", fmt);
+        fflush(stdout);
+        goto fail_or_end;
+    }
+
+    // ===============================================================
+    // offset pixel by OPT_RANGE_PIXEL_OFFSET
+    // ===============================================================
+    offset_image(ref_frame, OPT_RANGE_PIXEL_OFFSET, w, h, stride);
+    offset_image(dis_frame, OPT_RANGE_PIXEL_OFFSET, w, h, stride);
+
+    /* =========== adm ============== */
+    if ((ret = compute_adm(ref_frame, dis_frame, w, h, stride, stride, score_adm, score_num, score_den, scores, ADM_BORDER_FACTOR)))
+    {
+        printf("error: compute_adm failed.\n");
+        fflush(stdout);
+        goto fail_or_end;
+    }
+    printf("adm: %d %f\n", frm_idx, *score_adm);
+    if (print_all)
+    {
+        printf("adm_num: %d %f\n", frm_idx, *score_num);
+        printf("adm_den: %d %f\n", frm_idx, *score_den);
+        for (int scale = 0; scale < 4; scale++) {
+            printf("adm_num_scale%d: %d %f\n", scale, frm_idx, scores[2 * scale]);
+            printf("adm_den_scale%d: %d %f\n", scale, frm_idx, scores[2 * scale + 1]);
+        }
+    }
+    fflush(stdout);
+
+    /* =========== ansnr ============== */
+    ret = compute_ansnr(ref_frame, dis_frame, w, h, stride, stride, score_ansnr, score_psnr, peak, psnr_max);
+
+    if (ret)
+    {
+        printf("error: compute_ansnr failed.\n");
+        fflush(stdout);
+        goto fail_or_end;
+    }
+
+    printf("ansnr: %d %f\n", frm_idx, *score_ansnr);
+    printf("anpsnr: %d %f\n", frm_idx, *score_psnr);
+    fflush(stdout);
+
+    /* =========== motion ============== */
+    //TODO
+    // ===============================================================
+    // filter
+    // apply filtering (to eliminate effects film grain)
+    // stride input to convolution_f32_c is in terms of (sizeof(float) bytes)
+    // since stride = ALIGN_CEIL(w * sizeof(float)), stride divides sizeof(float)
+    // ===============================================================
+    //convolution_f32_c(FILTER_5, 5, ref_frame, blur_buf, temp_buf, w, h, stride / sizeof(float), stride / sizeof(float));
+
+    /* =========== vif ============== */
+
+    if ((ret = compute_vif(ref_frame, dis_frame, w, h, stride, stride, score_vif, score_num, score_den, scores)))
+    {
+        printf("error: compute_vif failed.\n");
+        fflush(stdout);
+        goto fail_or_end;
+    }
+    printf("vif: %d %f\n", frm_idx, *score_vif);
+    if (print_all)
+    {
+        printf("vif_num: %d %f\n", frm_idx, *score_num);
+        printf("vif_den: %d %f\n", frm_idx, *score_den);
+        for (int scale = 0; scale < 4; scale++) {
+            printf("vif_num_scale%d: %d %f\n", scale, frm_idx, scores[2 * scale]);
+            printf("vif_den_scale%d: %d %f\n", scale, frm_idx, scores[2 * scale + 1]);
+        }
+    }
+    fflush(stdout);
+
+    ret = 0;
+
+fail_or_end:
 
     return ret;
 }

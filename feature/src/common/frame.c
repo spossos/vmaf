@@ -215,3 +215,172 @@ int get_frame_offset(const char *fmt, int w, int h, size_t *offset)
     return 0;
 }
 
+int fmt_multiplier(
+    const char * fmt,
+    int        * num,
+    int        * den)
+{
+    // read ref y
+    if (!strcmp(fmt, "yuv420p"))
+    {
+        *num = 3;
+        *den = 2;
+    }
+    else if (!strcmp(fmt, "yuv422p"))
+    {
+        *num = 2;
+        *den = 1;
+    }
+    else if (!strcmp(fmt, "yuv444p"))
+    {
+        *num = 3;
+        *den = 1;
+    }
+    else if (!strcmp(fmt, "yuv420p10le"))
+    {
+        *num = 3 * 2;
+        *den = 2;
+    }
+    else if (!strcmp(fmt, "yuv422p10le"))
+    {
+        *num = 2 * 2;
+        *den = 1;
+    }
+    else if (!strcmp(fmt, "yuv444p10le"))
+    {
+        *num = 3 * 2;
+        *den = 1;
+    }
+    else
+    {
+        fprintf(stderr, "unknown format %s.\n", fmt);
+        return 1;
+    }
+    return 0;
+}
+
+int convert_frame(
+    unsigned char * in_frame,
+    void          * mem_data,
+    int             stride_byte)
+{
+    struct vmaf_frame_data
+        * vmem = mem_data;
+    float
+        * converted_data = vmem->frame;
+    char
+        * fmt = * vmem->format;
+    int
+        w = vmem->w,
+        h = vmem->h;
+    int ret;
+
+    // read ref y
+    if (!strcmp(fmt, "yuv420p") || !strcmp(fmt, "yuv422p") || !strcmp(fmt, "yuv444p"))
+    {
+        ret = convert_image_b2s(in_frame, converted_data, 0, w, h, stride_byte);
+    }
+    else if (!strcmp(fmt, "yuv420p10le") || !strcmp(fmt, "yuv422p10le") || !strcmp(fmt, "yuv444p10le"))
+    {
+        ret = convert_image_w2s(in_frame, converted_data, 0, w, h, stride_byte);
+    }
+    else
+    {
+        fprintf(stderr, "unknown format %s.\n", *fmt);
+        return 1;
+    }
+    if (ret)
+    {
+        return ret;
+    }
+
+    // in_frame skip u and v
+
+
+fail_or_end:
+    return ret;
+}
+
+int vmem_alloc(
+    struct vmaf_frame_data * fmem,
+    struct data            * in,
+    size_t                   data_sz)
+{
+    if (!data_sz)
+        return 1;
+
+    fmem->h = in->height;
+    fmem->w = in->width;
+    fmem->format = &in->format;
+    if (fmem->h == 0 || fmem->w == 0)
+        return 1;
+    fmem->frame = (float*)aligned_malloc(data_sz, MAX_ALIGN);
+    if (fmem->frame == NULL)
+        return 1;
+    memset(fmem->frame, 0, data_sz);
+    return 0;
+}
+
+void vmem_free(
+    struct vmaf_frame_data *fmem)
+{
+    if(fmem->frame)
+        aligned_free(fmem->frame);
+}
+
+int init_vmaf_mem(
+    void *m,
+    void *s,
+    void *d)
+{
+    struct data 
+        *in = d;
+    struct vmaf_frame_mem
+        *vmem = m;
+    struct vmaf_frame_score
+        *scores = s;
+
+    scores->score = 0.0;
+    scores->score_num = 0.0;
+    scores->score_den = 0.0;
+    scores->score_psnr = 0.0;
+    memset(scores->mscores, 0, sizeof(scores->mscores));
+
+    if (in->width <= 0 || in->height <= 0 || in->width > ALIGN_FLOOR(INT_MAX) / sizeof(float))
+    {
+        return 1;
+    }
+
+    int
+        stride = ALIGN_CEIL(in->width * sizeof(float));
+
+    if ((size_t)in->height > SIZE_MAX / stride)
+    {
+        return 1;
+    }
+
+    size_t
+        data_sz = (size_t)stride * in->height;
+    if (data_sz == 0)
+        return 1;
+
+    for (int i = 0; i < VMEMBUFSIZE; i++)
+    {
+        if (vmem_alloc(&vmem->ref, in, data_sz))
+            return 1;
+        if (vmem_alloc(&vmem->dis, in, data_sz))
+            return 1;
+    }
+    vmem->ref.frame_index = -1;
+    vmem->dis.frame_index = -1;
+    return 0;
+}
+
+void free_vmaf_mem(
+    void *m)
+{
+    struct vmaf_frame_mem
+        *vmem = m;
+    vmem_free(&vmem->ref);
+    vmem_free(&vmem->dis);
+}

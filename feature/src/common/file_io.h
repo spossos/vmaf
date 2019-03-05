@@ -35,4 +35,19 @@ int read_image_w2s(FILE *rfile, float *buf, float off, int width, int height, in
 
 int offset_image_s(float *buf, float off, int width, int height, int stride);
 
+int convert_image_b2s(
+    unsigned char * frame,
+    float         * buf,
+    float           off,
+    int             width,
+    int             height,
+    int             stride);
+
+int convert_image_w2s(
+    unsigned char * frame,
+    float         * buf,
+    float           off,
+    int             width,
+    int             height,
+    int             stride);
 #endif /* FILE_IO_H_ */

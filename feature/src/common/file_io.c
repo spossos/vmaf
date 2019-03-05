@@ -208,4 +208,80 @@ int offset_image_s(float *buf, float off, int width, int height, int stride)
 
 	return ret;
 }
+/**
+* Note: stride is in terms of bytes
+*/
+int convert_image_b2s(
+    unsigned char * frame,
+    float         * buf,
+    float           off,
+    int             width,
+    int             height,
+    int             stride)
+{
+    char *byte_ptr = (char *)buf;
+    int i, j;
+    int ret = 1;
 
+    if (width <= 0 || height <= 0)
+    {
+        goto fail_or_end;
+    }
+
+    for (i = 0; i < height; ++i)
+    {
+        float *row_ptr = (float *)byte_ptr;
+
+        for (j = 0; j < width; ++j)
+        {
+            row_ptr[j] = frame[j] + off;
+        }
+
+        byte_ptr += stride;
+    }
+
+    ret = 0;
+
+fail_or_end:
+
+    return ret;
+}
+
+int convert_image_w2s(
+    unsigned char * frame,
+    float         * buf,
+    float           off,
+    int             width,
+    int             height,
+    int             stride)
+{
+    // make sure unsigned short is 2 bytes
+    assert(sizeof(unsigned short) == 2);
+
+    char *byte_ptr = (char *)buf;
+    unsigned short *tmp_frame = (unsigned short*)frame;
+    int i, j;
+    int ret = 1;
+
+    if (width <= 0 || height <= 0)
+    {
+        goto fail_or_end;
+    }
+
+    for (i = 0; i < height; ++i)
+    {
+        float *row_ptr = (float *)byte_ptr;
+
+        for (j = 0; j < width; ++j)
+        {
+            row_ptr[j] = tmp_frame[j] + off;
+        }
+
+        byte_ptr += stride;
+    }
+
+    ret = 0;
+
+fail_or_end:
+    return ret;
+}

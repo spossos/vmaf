@@ -19,9 +19,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 
 #include "common/frame.h"
 #include "common/cpu.h"
+
+#define FRAMEVMAF 1
 
 int adm(int (*read_frame)(float *ref_data, float *main_data, float *temp_data, int stride, void *user_data), void *user_data, int w, int h, const char *fmt);
 int ansnr(int (*read_frame)(float *ref_data, float *main_data, float *temp_data, int stride, void *user_data), void *user_data, int w, int h, const char *fmt);
@@ -29,11 +32,31 @@ int vif(int (*read_frame)(float *ref_data, float *main_data, float *temp_data, i
 int vifdiff(int (*read_frame)(float *ref_data, float *main_data, float *temp_data, int stride, void *user_data), void *user_data, int w, int h, const char *fmt);
 int motion(int (*read_noref_frame)(float *main_data, float *temp_data, int stride, void *user_data), void *user_data, int w, int h, const char *fmt);
 int all(int (*read_frame)(float *ref_data, float *main_data, float *temp_data, int stride, void *user_data), void *user_data, int w, int h, const char *fmt);
+int all_frame(
+    float      * ref_frame,
+    float      * dis_frame,
+    void       * frame_scores,
+    int          frm_idx,
+    int          w,
+    int          h,
+    const char * fmt,
+    bool         print_all);
 
 enum vmaf_cpu cpu; // global
 
 static void usage(void)
 {
+#if FRAMEVMAF
+    puts("usage: vmaf fmt ref dis w h\n"
+        "fmts:\n"
+        "\tyuv420p\n"
+        "\tyuv422p\n"
+        "\tyuv444p\n"
+        "\tyuv420p10le\n"
+        "\tyuv422p10le\n"
+        "\tyuv444p10le"
+    );
+#else
     puts("usage: vmaf app fmt ref dis w h\n"
          "apps:\n"
          "\tadm\n"
@@ -50,6 +73,7 @@ static void usage(void)
          "\tyuv422p10le\n"
          "\tyuv444p10le"
     );
+#endif
 }
 
 int run_vmaf(const char *app, const char *fmt, const char *ref_path, const char *dis_path, int w, int h)
@@ -152,8 +176,183 @@ fail_or_end:
     }
 }
 
+int run_vmaf_frame(unsigned char *ref_frame, unsigned char *dis_frame, void *m, void *frame_scores, int frame_idx)
+{
+    struct vmaf_frame_score
+        * scores = frame_scores;
+    struct vmaf_frame_mem
+        * vmem = m;
+    int
+        ret    = 0,
+        w      = vmem->ref.w,
+        h      = vmem->ref.h,
+        stride = ALIGN_CEIL(w * sizeof(float));
+    char
+        * fmt  = * vmem->ref.format;
+
+    if ((size_t)h > SIZE_MAX / stride)
+    {
+        return 1;
+    };
+    cpu = cpu_autodetect();
+
+    ret = convert_frame(
+        ref_frame,
+        &vmem->ref,
+        stride
+    );
+    if (ret)
+        return ret;
+
+    ret = convert_frame(
+        dis_frame,
+        &vmem->dis,
+        stride
+    );
+    if (ret)
+        return ret;
+
+    ret = all_frame(
+        vmem->ref.frame,
+        vmem->dis.frame,
+        (void *) scores,
+        frame_idx,
+        w,
+        h,
+        fmt,
+        false);
+
+    return ret;
+}
+
 int main(int argc, const char **argv)
 {
+#if FRAMEVMAF
+    const char
+        * ref_path,
+        * dis_path,
+        * fmt;
+    int
+        w,
+        h,
+        num,
+        den,
+        data_sz,
+        frame_num = 0,
+        ret       = 0;
+
+    if (argc < 6) {
+        usage();
+        return 2;
+    }
+
+    fmt      = argv[1];
+    ref_path = argv[2];
+    dis_path = argv[3];
+    w        = atoi(argv[4]);
+    h        = atoi(argv[5]);
+
+    if (w <= 0 || h <= 0) {
+        usage();
+        return 2;
+    }
+    /*Frame pointers*/
+    unsigned char
+        * ref_frame = NULL,
+        * dis_frame = NULL;
+    /*Frame metric scores collector*/
+    struct vmaf_frame_score
+        frame_scores;
+    /*Memory structure for VMAF operation*/
+    struct vmaf_frame_mem
+        vmem;
+    vmem.ref.frame = NULL;
+    vmem.dis.frame = NULL;
+    /*User data*/
+    struct data
+        * d = NULL;
+    /*Memory allocation and initialization of User data*/
+    d = (struct data *)malloc(sizeof(struct data));
+    if (!d)
+    {
+        ret = 1;
+        goto fail_or_end;
+    }
+    d->format    = fmt;
+    d->width     = w;
+    d->height    = h;
+    d->ref_rfile = NULL;
+    d->dis_rfile = NULL;
+    /*Opening of yuv video files*/
+    if (!(d->ref_rfile = fopen(ref_path, "rb")))
+    {
+        fprintf(stderr, "fopen ref_path %s failed.\n", ref_path);
+        ret = 1;
+        goto fail_or_end;
+    }
+    if (!(d->dis_rfile = fopen(dis_path, "rb")))
+    {
+        fprintf(stderr, "fopen dis_path %s failed.\n", dis_path);
+        ret = 1;
+        goto fail_or_end;
+    }
+    /*Define frame size modifier based on Chroma format*/
+    ret = fmt_multiplier(
+        fmt,
+        &num,
+        &den
+    );
+    if (ret)
+        goto fail_or_end;
+    /*Frame size calculation based on user inputs and chroma fmt*/
+    data_sz = w * h * num / den;
+    /*VMAF memory allocation and initialization*/
+    ret = init_vmaf_mem(
+        &vmem,
+        &frame_scores,
+        d);
+    if(ret)
+        goto fail_or_end;
+    /*Input frame allocation*/
+    ref_frame = (unsigned char *)aligned_malloc(data_sz, MAX_ALIGN);//Reference or original frame to compare against
+    dis_frame = (unsigned char *)aligned_malloc(data_sz, MAX_ALIGN);//Distorted or processed frame to compare
+    if (ref_frame == NULL || dis_frame == NULL)
+    {
+        ret = 1;
+        goto fail_or_end;
+    }
+    /*Main loop - Read frames from files - Measure VMAF between the two frames*/
+    while ((fread(ref_frame, 1, data_sz, d->ref_rfile) > (data_sz - 1)) &&
+           (fread(dis_frame, 1, data_sz, d->dis_rfile) > (data_sz - 1)))
+    {
+        ret = run_vmaf_frame(
+            ref_frame,
+            dis_frame,
+            &vmem,
+            &frame_scores,
+            frame_num);
+        if(ret)
+            goto fail_or_end;
+        frame_num++;
+    }
+
+fail_or_end:
+    /*Free all memory and close of all YUV files*/
+    free_vmaf_mem(&vmem);
+    if (d != NULL)
+    {
+        if (d->ref_rfile != NULL)
+            fclose(d->ref_rfile);
+        if (d->dis_rfile != NULL)
+            fclose(d->dis_rfile);
+        free(d);
+    }
+    if(ref_frame != NULL)
+        aligned_free(ref_frame);
+    if (dis_frame != NULL)
+        aligned_free(dis_frame);
+    return ret;
+#else
     const char *app;
     const char *ref_path;
     const char *dis_path;
@@ -167,7 +366,7 @@ int main(int argc, const char **argv)
     }
 
     app      = argv[1];
-    fmt         = argv[2];
+    fmt      = argv[2];
     ref_path = argv[3];
     dis_path = argv[4];
     w        = atoi(argv[5]);
@@ -179,4 +378,5 @@ int main(int argc, const char **argv)
     }
 
     return run_vmaf(app, fmt, ref_path, dis_path, w, h);
+#endif
 }
