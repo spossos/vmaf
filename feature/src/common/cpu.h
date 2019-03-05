@@ -24,6 +24,7 @@
 enum vmaf_cpu {
 	VMAF_CPU_NONE,
 	VMAF_CPU_SSE2,
+    VMAF_CPU_SSE4,
 	VMAF_CPU_AVX
 };
 

@@ -20,6 +20,7 @@
 #include <string.h>
 #include "file_io.h"
 #include "frame.h"
+#include "cpu.h"
 
 #define read_image_b       read_image_b2s
 #define read_image_w       read_image_w2s
@@ -260,9 +261,10 @@ int fmt_multiplier(
 }
 
 int convert_frame(
-    unsigned char * in_frame,
-    void          * mem_data,
-    int             stride_byte)
+    t_convert_image p_func,
+    unsigned char   * in_frame,
+    void            * mem_data,
+    int               stride_byte)
 {
     struct vmaf_frame_data
         * vmem = mem_data;
@@ -276,27 +278,8 @@ int convert_frame(
     int ret;
 
     // read ref y
-    if (!strcmp(fmt, "yuv420p") || !strcmp(fmt, "yuv422p") || !strcmp(fmt, "yuv444p"))
-    {
-        ret = convert_image_b2s(in_frame, converted_data, 0, w, h, stride_byte);
-    }
-    else if (!strcmp(fmt, "yuv420p10le") || !strcmp(fmt, "yuv422p10le") || !strcmp(fmt, "yuv444p10le"))
-    {
-        ret = convert_image_w2s(in_frame, converted_data, 0, w, h, stride_byte);
-    }
-    else
-    {
-        fprintf(stderr, "unknown format %s.\n", *fmt);
-        return 1;
-    }
-    if (ret)
-    {
-        return ret;
-    }
-
+    ret = (*p_func)(in_frame, converted_data, 0, w, h, stride_byte);
     // in_frame skip u and v
-
-
 fail_or_end:
     return ret;
 }
@@ -329,9 +312,11 @@ void vmem_free(
 }
 
 int init_vmaf_mem(
-    void *m,
-    void *s,
-    void *d)
+    void            * m,
+    void            * s,
+    void            * d,
+    int               cpuVal,
+    const char      * fmt)
 {
     struct data 
         *in = d;
@@ -339,6 +324,18 @@ int init_vmaf_mem(
         *vmem = m;
     struct vmaf_frame_score
         *scores = s;
+    t_convert_image
+        ** convert_image = &vmem->p_conversion_func;
+
+    if (!strcmp(fmt, "yuv420p") || !strcmp(fmt, "yuv422p") || !strcmp(fmt, "yuv444p"))
+        CPU_DISP_INIT_SSE4_C(cpuVal, b2s, *convert_image);
+    else if (!strcmp(fmt, "yuv420p10le") || !strcmp(fmt, "yuv422p10le") || !strcmp(fmt, "yuv444p10le"))
+        CPU_DISP_INIT_SSE4_C(cpuVal, w2s, *convert_image);
+    else
+    {
+        fprintf(stderr, "unknown format %s.\n", fmt);
+        return 1;
+    }
 
     scores->score = 0.0;
     scores->score_num = 0.0;
