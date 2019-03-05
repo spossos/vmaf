@@ -26,6 +26,8 @@ enum vmaf_cpu cpu_autodetect()
 
     if (caps.avx)
         return VMAF_CPU_AVX;
+    else if (caps.sse42)
+        return VMAF_CPU_SSE4;
     else if (caps.sse2)
         return VMAF_CPU_SSE2;
     else

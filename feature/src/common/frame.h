@@ -21,6 +21,7 @@
 
 #include <limits.h>
 #include "../common/alloc.h"
+#include "../common/file_io.h"
 
 #define VMEMBUFSIZE 3
 
@@ -74,6 +75,8 @@ struct vmaf_frame_mem
         ref;
     struct vmaf_frame_data
         dis;
+    t_convert_image
+        p_conversion_func;
 
 };
 
@@ -89,9 +92,10 @@ int fmt_multiplier(
     int        * den);
 
 int convert_frame(
-    unsigned char * in_frame,
-    void          * mem_data,
-    int             stride_byte);
+    t_convert_image * p_func,
+    unsigned char   * in_frame,
+    void            * mem_data,
+    int               stride_byte);
 
 int vmem_alloc(
     struct vmaf_frame_data * vmem,
@@ -102,9 +106,11 @@ void vmem_free(
     struct vmaf_frame_data * vmem);
 
 int init_vmaf_mem(
-    void * m,
-    void * s,
-    void * d);
+    void            * m,
+    void            * s,
+    void            * d,
+    int               cpuVal,
+    const char      * fmt);
 
 void free_vmaf_mem(
     void *m);
