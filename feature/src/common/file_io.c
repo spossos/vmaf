@@ -172,7 +172,7 @@ int read_image_w2s(FILE * rfile, float *buf, float off, int width, int height, i
 
 		for (j = 0; j < width; ++j)
 		{
-			row_ptr[j] = tmp_buf[j] / 4.0 + off; // '/4' to convert from 10 to 8-bit
+			row_ptr[j] = tmp_buf[j] / 4.0f + off; // '/4' to convert from 10 to 8-bit
 		}
 
 		byte_ptr += stride;
@@ -300,8 +300,7 @@ int convert_image_b2s_AVX(
     char
         *byte_ptr = (char *)buf;
     int
-        i,
-        j;
+        i;
     __m256i
         pxl32;
     __m256
@@ -397,10 +396,9 @@ int convert_image_w2s_SSE4(
         ret = 1;
 
     __m128i
-        pxl32,
-        *p_intPx = (__m128*) buf;
+        *p_intPx = (__m128i*) buf;
     __m128
-        *p_fltPx = (__m128i*) frame;
+        *p_fltPx = (__m128*) frame;
 
     if (width <= 0 || height <= 0)
     {
@@ -434,7 +432,6 @@ int convert_image_w2s_AVX2(
     assert(sizeof(unsigned short) == 2);
     int
         i,
-        j,
         ret = 1;
     __m128i
         *p_intPx;
