@@ -189,9 +189,9 @@ int run_vmaf_frame(unsigned char *ref_frame, unsigned char *dis_frame, void *m, 
         stride = ALIGN_CEIL(w * sizeof(float));
     char
         * fmt = *vmem->ref.format;
-#if defined (_WIN64)
+#if defined(_WIN64) || defined(_WIN32)
     if ((size_t)h > SIZE_MAX / stride)
-#elsif defined (__linux__)
+#else
     if ((size_t)h > ULLONG_MAX / stride)
 #endif
     {

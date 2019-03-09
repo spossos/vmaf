@@ -92,7 +92,7 @@ int fmt_multiplier(
     int        * den);
 
 int convert_frame(
-    t_convert_image * p_func,
+    t_convert_image   p_func,
     unsigned char   * in_frame,
     void            * mem_data,
     int               stride_byte);

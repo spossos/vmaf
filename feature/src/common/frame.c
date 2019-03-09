@@ -261,7 +261,7 @@ int fmt_multiplier(
 }
 
 int convert_frame(
-    t_convert_image p_func,
+    t_convert_image   p_func,
     unsigned char   * in_frame,
     void            * mem_data,
     int               stride_byte)
@@ -350,8 +350,11 @@ int init_vmaf_mem(
 
     int
         stride = ALIGN_CEIL(in->width * sizeof(float));
-
+#if defined(_WIN64) || defined(_WIN32)
     if ((size_t)in->height > SIZE_MAX / stride)
+#else
+    if ((size_t)in->height > ULLONG_MAX / stride)
+#endif
     {
         return 1;
     }
